@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang=en>
+<head>
+  <meta charset=utf-8>
+  <title>Credential Management Bugzilla Dashboard</title>
+  <meta name=viewport content=width=device-width,initial-scale=1>
+  <style>
+    html {
+      font-family: system-ui, sans-serif;
+      height: 100%;
+    }
+    body {
+      margin: 3ex 3em;
+    }
+
+    path.counts-path {
+      fill: none;
+      stroke: black;
+    }
+
+    #categories {
+      display: flex;
+    }
+
+    #categories article {
+      flex: auto;
+    }
+
+    output {
+      font-weight: bold;
+    }
+  </style>
+  <script src=d3.js></script>
+</head>
+<body>
+  <head>
+    <h1>Credential Management Bugs: Password Manager</h1>
+  </head>
+  <article id=timeline>
+    <h2>Bugs Created per Month:</h2>
+  </article>
+  <head>
+    <h2>Unresolved Bugs</h2>
+  </head>
+  <article>
+    <p>Total open bugs: <output id=open-bugs-total>-</output>, bugs left to triage: <output id=left-to-triage-total>-</output>.</p>
+  </article>
+  <section id=categories></section>
+  <article id=bugs-list>
+    <h2>List of Unresolved Bugs</h2>
+  </article>
+
+<script type=module>
+  const width = 1600
+  const height = 200
+  const marginTop = 20
+  const marginBottom = 20
+  const marginRight = 20
+  const marginLeft = 0
+
+  const svg = d3.select('#timeline')
+    .append("svg")
+      .attr("width", "100%")
+      .attr("height", "30%")
+      .attr('viewBox', '0 0 ' +  ( width + marginLeft + marginRight ) + ' ' + ( height  + marginTop + marginBottom ) )
+      .attr('preserveAspectRatio', 'xMidYMid meet')
+  const g = svg.append("g")
+      .attr("transform", "translate(" + marginLeft + "," + marginTop + ")")
+
+  const y = d3.scaleLinear()
+    .domain([0, 100])
+    .range([ height, 0 ])
+  const gy = g.append("g")
+    .attr("transform", "translate(" + (width - marginRight) + ",0)")
+    .call(d3.axisRight(y))
+
+  const gx = g.append("g")
+    .attr("transform", "translate(0," + height + ")")
+
+  const countsPath = g.append("path")
+      .attr("class", "counts-path")
+
+  const url = new URL('https://bugzilla.mozilla.org/rest/bug')
+  url.searchParams.set('include_fields', ['creation_time'])
+  url.searchParams.set('component', 'Password Manager')
+  url.searchParams.set('limit', 0)
+  
+  const req = await fetch(url)
+  const { bugs } = await req.json()
+
+  const stats = bugs
+    .reduce((memo, { creation_time }) => {
+      const month = creation_time.split('-', 2).join('-')
+      memo.months[month] ||= 0
+      memo.months[month] += 1
+
+      return memo
+    }, {
+      months: {},
+    })
+  
+  const counts = Object.keys(stats.months)
+    .sort()
+    .map(month => ({
+      date: new Date(month),
+      count: stats.months[month],
+    }))
+
+  function renderGraph() {
+    if (!counts.length) return
+
+    y.domain([0, d3.max(counts, d => d.count)])
+    gy.call(d3.axisRight(y))
+
+    const x = d3.scaleUtc()
+      .domain([
+        counts[0].date,
+        counts[counts.length - 1].date
+      ])
+      .range([marginLeft, width - marginRight])
+
+      gx.call(d3.axisBottom(x))
+
+      countsPath
+        .datum(counts)
+        .attr("d",
+          d3.line()
+            .x(d => x(d.date))
+            .y(d => y(d.count))
+          )
+  }
+
+  renderGraph()
+</script>
+<script type=module>
+  const url = new URL('https://bugzilla.mozilla.org/rest/bug')
+  url.searchParams.set('include_fields', [
+    'id',
+    'summary',
+    'status',
+    'is_confirmed',
+    'type',
+    'assigned_to',
+    'last_change_time',
+    'priority',
+    'severity',
+    'whiteboard',
+    'keywords',
+  ])
+  url.searchParams.set('component', 'Password Manager')
+  url.searchParams.set('resolution', '---')
+  url.searchParams.set('limit', 0)
+  
+  const req = await fetch(url)
+  const { bugs } = await req.json()
+
+  const stats = bugs
+    .reduce((memo, { status, is_confirmed, assigned_to, priority, severity, keywords, whiteboard }) => {
+      memo.status[status] ||= 0
+      memo.status[status] += 1
+
+      if (!is_confirmed) {
+        memo.untriaged +=1
+      }
+
+      memo.asignee[assigned_to] ||= 0
+      memo.asignee[assigned_to] += 1
+
+      memo.priority[priority] ||= 0
+      memo.priority[priority] += 1
+
+      memo.severity[severity] ||= 0
+      memo.severity[severity] += 1
+
+      for (const keyword of keywords) {
+        memo.keywords[keyword] ||= 0
+        memo.keywords[keyword] += 1
+      }
+
+      const whiteboardTags = whiteboard
+        .split(/\][\s,]*\[*/)
+        .map(tag => tag.replace(/^\s*\[/, ''))
+        .filter(Boolean)
+      for (const tag of whiteboardTags) {
+        memo.whiteboard[tag] ||= 0
+        memo.whiteboard[tag] += 1
+      }
+
+      return memo
+    }, {
+      total: bugs.length,
+      untriaged: 0,
+      status: {},
+      priority: {},
+      severity: {},
+      asignee: {},
+      keywords: {},
+      whiteboard: {}
+    })
+  
+  d3.select('#open-bugs-total').text(stats.total)
+  d3.select('#left-to-triage-total').text(stats.untriaged)
+
+  for (const key in stats) {
+    if (key === 'total') continue
+    if (key === 'untriaged') continue
+
+    const data = Object.keys(stats[key])
+      .sort()
+      .map(title => ({
+        title,
+        count: stats[key][title]
+      }))
+    const article = d3.select('#categories').append('article')
+    article.append('h3').text(key)
+    article.append('ul')
+      .selectAll('li')
+      .data(data)
+      .enter()
+      .append('li')
+      .html(d => `${d.title}: <strong>${d.count}</strong>`)
+  }
+  d3.select('#bugs-list')
+    .append('table')
+    .selectAll('tr')
+    .data(bugs)
+      .enter()
+      .append('tr')
+      .append('td')
+      .append('a')
+      .text(d => d.summary)
+      .attr('href', d => `https://bugzilla.mozilla.org/show_bug.cgi?id=${d.id}`)
+</script>
