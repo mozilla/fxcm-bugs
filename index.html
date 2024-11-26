@@ -43,7 +43,11 @@
     <h2>Unresolved Bugs</h2>
   </head>
   <article>
-    <p>Total open bugs: <output id=open-bugs-total>-</output>, bugs left to triage: <output id=left-to-triage-total>-</output>.</p>
+    <p>
+      Total open bugs: <output id=open-bugs-total>-</output>,
+      bugs left to triage: <output id=left-to-triage-total>-</output>,
+      bugs needing info: <output id=needsinfo-total>-</output>.
+    </p>
   </article>
   <section id=categories></section>
   <article id=bugs-list>
@@ -146,6 +150,7 @@
     'severity',
     'whiteboard',
     'keywords',
+    'flags',
   ])
   url.searchParams.set('component', 'Password Manager')
   url.searchParams.set('resolution', '---')
@@ -155,11 +160,17 @@
   const { bugs } = await req.json()
 
   const stats = bugs
-    .reduce((memo, { status, is_confirmed, assigned_to, priority, severity, keywords, whiteboard }) => {
+    .reduce((memo, { status, is_confirmed, assigned_to, priority, severity, keywords, whiteboard, flags }) => {
       memo.status[status] ||= 0
       memo.status[status] += 1
 
-      if (!is_confirmed) {
+      const needsinfo = !!flags.find(flag => flag.name === 'needinfo')
+
+      if (needsinfo) {
+        memo.needsinfo += 1
+      }
+
+      if (!is_confirmed && !needsinfo) {
         memo.untriaged +=1
       }
 
@@ -190,20 +201,23 @@
     }, {
       total: bugs.length,
       untriaged: 0,
+      needsinfo: 0,
       status: {},
       priority: {},
       severity: {},
       asignee: {},
       keywords: {},
-      whiteboard: {}
+      whiteboard: {},
     })
   
   d3.select('#open-bugs-total').text(stats.total)
   d3.select('#left-to-triage-total').text(stats.untriaged)
+  d3.select('#needsinfo-total').text(stats.needsinfo)
 
   for (const key in stats) {
     if (key === 'total') continue
     if (key === 'untriaged') continue
+    if (key === 'needsinfo') continue
 
     const data = Object.keys(stats[key])
       .sort()
