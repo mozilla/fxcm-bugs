@@ -27,11 +27,22 @@
        gap: 3em;
     }
 
-    #categories article h3 {
+    #categories article h4 {
       text-transform: capitalize;
     }
     #categories article ul {
       padding-left: 0;
+    }
+    table {
+      border-collapse: collapse;
+    }
+    table th,
+    table td {
+      padding: 1ex 1em;
+      border: 1px solid black;
+    }
+    summary {
+      font-weight: bold;
     }
 
     output {
@@ -56,14 +67,18 @@
   </head>
   <article>
     <p>
-      Total open bugs: <output id=open-bugs-total>-</output>,
-      bugs left to triage: <output id=left-to-triage-total>-</output> (unconfirmed and not flagged as needinfo),
-      bugs needing info: <output id=needsinfo-total>-</output>.
+      <a href=#>Total open bugs</a>: <output id=open-bugs-total>-</output>,
+      <a href=#last-month>bugs created within the last month</a>: <output id=last-months-bugs>-</output>,
+      bugs <a href=#untriaged>left to triage</a>: <output id=left-to-triage-total>-</output> (unconfirmed and not flagged as needinfo),
+      bugs <a href=#needinfo>needing info</a>: <output id=needsinfo-total>-</output>.
     </p>
   </article>
-  <section id=categories></section>
+  <details closed>
+    <summary>Detailed Statistics</summary>
+    <section id=categories></section>
+  </details>
   <article id=bugs-list>
-    <h2>List of Open Bugs</h2>
+    <h2>List of <output id=bugs-filter>all</output> Open Bugs</h2>
   </article>
 
 <script type=module>
@@ -152,6 +167,7 @@
   const openBugsUrl = new URL('https://bugzilla.mozilla.org/rest/bug')
   openBugsUrl.searchParams.set('include_fields', [
     'id',
+    'creation_time',
     'summary',
     'status',
     'is_confirmed',
@@ -171,10 +187,17 @@
   const OpenBugsReq = await fetch(openBugsUrl)
   const { bugs: openBugs } = await OpenBugsReq.json()
 
+  const today = new Date()
+  const lastMonth = Date.parse(new Date(today.getFullYear(), today.getMonth() - 1, today.getDate()))
+
   const openBugsStats = openBugs
-    .reduce((memo, { status, is_confirmed, assigned_to, priority, severity, keywords, whiteboard, flags }) => {
+    .reduce((memo, { status, is_confirmed, assigned_to, priority, severity, keywords, whiteboard, flags, creation_time }) => {
       memo.status[status] ||= 0
       memo.status[status] += 1
+
+      if (new Date(creation_time) > lastMonth) {
+        memo.lastMonth += 1
+      }
 
       const needsinfo = !!flags.find(flag => flag.name === 'needinfo')
 
@@ -214,6 +237,7 @@
       total: openBugs.length,
       untriaged: 0,
       needsinfo: 0,
+      lastMonth: 0,
       status: {},
       priority: {},
       severity: {},
@@ -223,6 +247,7 @@
     })
   
   d3.select('#open-bugs-total').text(openBugsStats.total)
+  d3.select('#last-months-bugs').text(openBugsStats.lastMonth)
   d3.select('#left-to-triage-total').text(openBugsStats.untriaged)
   d3.select('#needsinfo-total').text(openBugsStats.needsinfo)
 
@@ -230,6 +255,7 @@
     if (key === 'total') continue
     if (key === 'untriaged') continue
     if (key === 'needsinfo') continue
+    if (key === 'lastMonth') continue
 
     const data = Object.keys(openBugsStats[key])
       .sort()
@@ -238,7 +264,7 @@
         count: openBugsStats[key][title]
       }))
     const article = d3.select('#categories').append('article')
-    article.append('h3').text(key)
+    article.append('h4').text(key)
     article.append('ul')
       .selectAll('li')
       .data(data)
@@ -246,14 +272,65 @@
       .append('li')
       .html(d => `${d.title}: <strong>${d.count}</strong>`)
   }
-  d3.select('#bugs-list')
+
+  const table = d3.select('#bugs-list')
     .append('table')
-    .selectAll('tr')
-    .data(openBugs)
-      .enter()
+    
+  table.append('thead')
+    .append('tr')
+    .selectAll('th')
+    .data([
+      'ID',
+      'Created',
+      'Status',
+      'Priority',
+      'Severity',
+      'Summary'
+    ])
+    .enter()
+    .append('th')
+    .html(d => d)
+
+  const tbody = table.append('tbody')
+
+  // this is the most simple way to do filtering, we probably need arg support here and more
+  const filters = {
+    '': Boolean,
+    '#untriaged': ({ is_confirmed, flags }) => !is_confirmed && !flags.find(flag => flag.name === 'needinfo'),
+    '#needinfo': ({ flags }) => !!flags.find(flag => flag.name === 'needinfo'),
+    '#last-month': ({ creation_time }) => new Date(creation_time) > lastMonth,
+  }
+
+  function updateBugsTable() {
+    // find filter function
+    const filter = filters[location.hash]
+
+    const data = openBugs.filter(filter)
+
+    d3.select('#bugs-filter').text(`${data.length} ${location.hash && location.hash.slice(1) || 'all'}`)
+
+    // bind data to the table
+    const tr = tbody.selectAll('tr')
+      .data(data, d => d.id)
+
+    // update table
+    tr.enter()
       .append('tr')
+      .selectAll('td')
+      .data(d => [
+        d.id,
+        (new Date(d.creation_time)).toLocaleDateString(),
+        d.status,
+        d.priority,
+        d.severity,
+        `<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=${d.id}">${d.summary}</a>`
+      ])
+      .enter()
       .append('td')
-      .append('a')
-      .text(d => d.summary)
-      .attr('href', d => `https://bugzilla.mozilla.org/show_bug.cgi?id=${d.id}`)
+      .html(d => d)
+    tr.exit().remove()
+   }
+   updateBugsTable()
+
+   window.onhashchange = updateBugsTable
 </script>
