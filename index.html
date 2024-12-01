@@ -18,10 +18,6 @@
       stroke: black;
     }
 
-    path.severity-path {
-      fill: none;
-    }
-
     #categories {
       display: flex;
     }
@@ -85,83 +81,60 @@
   const gx = g.append("g")
     .attr("transform", "translate(0," + height + ")")
 
+  const countsPath = g.append("path")
+      .attr("class", "counts-path")
+
   const url = new URL('https://bugzilla.mozilla.org/rest/bug')
-  url.searchParams.set('include_fields', ['creation_time', 'severity'])
+  url.searchParams.set('include_fields', ['creation_time'])
   url.searchParams.set('component', 'Password Manager')
   url.searchParams.set('limit', 0)
   
   const req = await fetch(url)
   const { bugs } = await req.json()
 
-  const severityMap = {
-    trivial: 'S3',
-    minor: 'S4',
-    normal: 'S3',
-    major: 'S3',
-    blocker: 'S2',
-    critical: 'S1',
-  }
-
   const stats = bugs
-    .reduce((memo, { creation_time, severity }) => {
+    .reduce((memo, { creation_time }) => {
       const month = creation_time.split('-', 2).join('-')
-      memo.month[month] ||= { total: 0, severity: {} }
-      memo.month[month].total += 1
-
-      const mappedSeverity = severityMap[severity] || severity
-
-      memo.month[month].severity[mappedSeverity] ||= 0
-      memo.month[month].severity[mappedSeverity] += 1
-
-      memo.severity.add(mappedSeverity)
+      memo.months[month] ||= 0
+      memo.months[month] += 1
 
       return memo
     }, {
-      month: {},
-      severity: new Set,
+      months: {},
     })
   
-  const months = Object.keys(stats.month)
+  const counts = Object.keys(stats.months)
     .sort()
     .map(month => ({
-      ...stats.month[month],
       date: new Date(month),
+      count: stats.months[month],
     }))
 
-  y.domain([0, d3.max(months, d => d.total)])
-  gy.call(d3.axisRight(y))
+  function renderGraph() {
+    if (!counts.length) return
 
-  const color = d3.scaleOrdinal(d3.schemeAccent)
+    y.domain([0, d3.max(counts, d => d.count)])
+    gy.call(d3.axisRight(y))
 
-  const x = d3.scaleUtc()
-    .domain([
-      months[0].date,
-      months[months.length - 1].date
-    ])
-    .range([marginLeft, width - marginRight])
+    const x = d3.scaleUtc()
+      .domain([
+        counts[0].date,
+        counts[counts.length - 1].date
+      ])
+      .range([marginLeft, width - marginRight])
 
-    gx.call(d3.axisBottom(x))
+      gx.call(d3.axisBottom(x))
 
-    g.append("path")
-      .attr("class", "counts-path")
-      .datum(months)
-      .attr("d",
-        d3.line()
-          .x(d => x(d.date))
-          .y(d => y(d.total))
-        )
-
-    for (const severity of stats.severity.keys()) {
-      g.append("path")
-        .attr("stroke", color(severity))
-        .attr("class", "severity-path")
-        .datum(months)
+      countsPath
+        .datum(counts)
         .attr("d",
           d3.line()
             .x(d => x(d.date))
-            .y(d => y(d.severity[severity] || 0))
+            .y(d => y(d.count))
           )
-    }
+  }
+
+  renderGraph()
 </script>
 <script type=module>
   const url = new URL('https://bugzilla.mozilla.org/rest/bug')
