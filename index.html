@@ -24,6 +24,14 @@
 
     #categories article {
       flex: auto;
+       gap: 3em;
+    }
+
+    #categories article h3 {
+      text-transform: capitalize;
+    }
+    #categories article ul {
+      padding-left: 0;
     }
 
     output {
@@ -36,25 +44,30 @@
   <head>
     <h1>Credential Management Bugs: Password Manager</h1>
   </head>
-  <article id=timeline>
+  <article>
     <h2>Bugs Created per Month:</h2>
+    <div id=timeline></div>
+    <p>
+      Bugs created per month: <output id=bugs-per-month>-</output> (average over last 12 months).
+    </p>
   </article>
   <head>
-    <h2>Unresolved Bugs</h2>
+    <h2>Open Bugs</h2>
   </head>
   <article>
     <p>
       Total open bugs: <output id=open-bugs-total>-</output>,
-      bugs left to triage: <output id=left-to-triage-total>-</output>,
+      bugs left to triage: <output id=left-to-triage-total>-</output> (unconfirmed and not flagged as needinfo),
       bugs needing info: <output id=needsinfo-total>-</output>.
     </p>
   </article>
   <section id=categories></section>
   <article id=bugs-list>
-    <h2>List of Unresolved Bugs</h2>
+    <h2>List of Open Bugs</h2>
   </article>
 
 <script type=module>
+  // all bugs
   const width = 1600
   const height = 200
   const marginTop = 20
@@ -66,7 +79,7 @@
     .append("svg")
       .attr("width", "100%")
       .attr("height", "30%")
-      .attr('viewBox', '0 0 ' +  ( width + marginLeft + marginRight ) + ' ' + ( height  + marginTop + marginBottom ) )
+      .attr('viewBox', '0 0 ' + (width + marginLeft + marginRight) + ' ' + (height  + marginTop + marginBottom))
       .attr('preserveAspectRatio', 'xMidYMid meet')
   const g = svg.append("g")
       .attr("transform", "translate(" + marginLeft + "," + marginTop + ")")
@@ -84,15 +97,15 @@
   const countsPath = g.append("path")
       .attr("class", "counts-path")
 
-  const url = new URL('https://bugzilla.mozilla.org/rest/bug')
-  url.searchParams.set('include_fields', ['creation_time'])
-  url.searchParams.set('component', 'Password Manager')
-  url.searchParams.set('limit', 0)
+  const allBugsUrl = new URL('https://bugzilla.mozilla.org/rest/bug')
+  allBugsUrl.searchParams.set('include_fields', ['creation_time'])
+  allBugsUrl.searchParams.set('component', 'Password Manager')
+  allBugsUrl.searchParams.set('limit', 0)
   
-  const req = await fetch(url)
-  const { bugs } = await req.json()
+  const allBugsReq = await fetch(allBugsUrl)
+  const { bugs: allBugs } = await allBugsReq.json()
 
-  const stats = bugs
+  const allBugsStats = allBugs
     .reduce((memo, { creation_time }) => {
       const month = creation_time.split('-', 2).join('-')
       memo.months[month] ||= 0
@@ -103,42 +116,41 @@
       months: {},
     })
   
-  const counts = Object.keys(stats.months)
+  const counts = Object.keys(allBugsStats.months)
     .sort()
     .map(month => ({
       date: new Date(month),
-      count: stats.months[month],
+      count: allBugsStats.months[month],
     }))
 
-  function renderGraph() {
-    if (!counts.length) return
+  const last12Months = counts.slice().reverse().slice(1, 13)
+  const averageBugsPerMonth = Math.round(last12Months.reduce((memo, { count }) => memo + count, 0) / 12)
 
-    y.domain([0, d3.max(counts, d => d.count)])
-    gy.call(d3.axisRight(y))
+  d3.select('#bugs-per-month').text(averageBugsPerMonth)
 
-    const x = d3.scaleUtc()
-      .domain([
-        counts[0].date,
-        counts[counts.length - 1].date
-      ])
-      .range([marginLeft, width - marginRight])
+  y.domain([0, d3.max(counts, d => d.count)])
+  gy.call(d3.axisRight(y))
 
-      gx.call(d3.axisBottom(x))
+  const x = d3.scaleUtc()
+    .domain([
+      counts[0].date,
+      counts[counts.length - 1].date
+    ])
+    .range([marginLeft, width - marginRight])
 
-      countsPath
-        .datum(counts)
-        .attr("d",
-          d3.line()
-            .x(d => x(d.date))
-            .y(d => y(d.count))
-          )
-  }
+    gx.call(d3.axisBottom(x))
 
-  renderGraph()
-</script>
-<script type=module>
-  const url = new URL('https://bugzilla.mozilla.org/rest/bug')
-  url.searchParams.set('include_fields', [
+    countsPath
+      .datum(counts)
+      .attr("d",
+        d3.line()
+          .x(d => x(d.date))
+          .y(d => y(d.count))
+        )
+
+  // the open bugs
+  const openBugsUrl = new URL('https://bugzilla.mozilla.org/rest/bug')
+  openBugsUrl.searchParams.set('include_fields', [
     'id',
     'summary',
     'status',
@@ -152,14 +164,14 @@
     'keywords',
     'flags',
   ])
-  url.searchParams.set('component', 'Password Manager')
-  url.searchParams.set('resolution', '---')
-  url.searchParams.set('limit', 0)
+  openBugsUrl.searchParams.set('component', 'Password Manager')
+  openBugsUrl.searchParams.set('resolution', '---')
+  openBugsUrl.searchParams.set('limit', 0)
   
-  const req = await fetch(url)
-  const { bugs } = await req.json()
+  const OpenBugsReq = await fetch(openBugsUrl)
+  const { bugs: openBugs } = await OpenBugsReq.json()
 
-  const stats = bugs
+  const openBugsStats = openBugs
     .reduce((memo, { status, is_confirmed, assigned_to, priority, severity, keywords, whiteboard, flags }) => {
       memo.status[status] ||= 0
       memo.status[status] += 1
@@ -199,7 +211,7 @@
 
       return memo
     }, {
-      total: bugs.length,
+      total: openBugs.length,
       untriaged: 0,
       needsinfo: 0,
       status: {},
@@ -210,20 +222,20 @@
       whiteboard: {},
     })
   
-  d3.select('#open-bugs-total').text(stats.total)
-  d3.select('#left-to-triage-total').text(stats.untriaged)
-  d3.select('#needsinfo-total').text(stats.needsinfo)
+  d3.select('#open-bugs-total').text(openBugsStats.total)
+  d3.select('#left-to-triage-total').text(openBugsStats.untriaged)
+  d3.select('#needsinfo-total').text(openBugsStats.needsinfo)
 
-  for (const key in stats) {
+  for (const key in openBugsStats) {
     if (key === 'total') continue
     if (key === 'untriaged') continue
     if (key === 'needsinfo') continue
 
-    const data = Object.keys(stats[key])
+    const data = Object.keys(openBugsStats[key])
       .sort()
       .map(title => ({
         title,
-        count: stats[key][title]
+        count: openBugsStats[key][title]
       }))
     const article = d3.select('#categories').append('article')
     article.append('h3').text(key)
@@ -237,7 +249,7 @@
   d3.select('#bugs-list')
     .append('table')
     .selectAll('tr')
-    .data(bugs)
+    .data(openBugs)
       .enter()
       .append('tr')
       .append('td')
