@@ -69,7 +69,9 @@
     <p>
       <a href=#>Total open bugs</a>: <output id=open-bugs-total>-</output>,
       <a href=#last-month>bugs created within the last month</a>: <output id=last-months-bugs>-</output>,
-      bugs <a href=#untriaged>left to triage</a>: <output id=left-to-triage-total>-</output> (unconfirmed and not flagged as needinfo),
+      bugs <a href=#untriaged>left to triage</a>: <output id=left-to-triage-total>-</output>,
+      <a href=#last-months-untriaged>left to triage within the last 3 months</a>: <output id=left-to-triage-last-months-total>-</output>
+      (unconfirmed and not flagged as needinfo),
       bugs <a href=#needinfo>needing info</a>: <output id=needsinfo-total>-</output>.
     </p>
   </article>
@@ -189,6 +191,7 @@
 
   const today = new Date()
   const lastMonth = Date.parse(new Date(today.getFullYear(), today.getMonth() - 1, today.getDate()))
+  const last3Months = Date.parse(new Date(today.getFullYear(), today.getMonth() - 3, today.getDate()))
 
   const openBugsStats = openBugs
     .reduce((memo, { status, is_confirmed, assigned_to, priority, severity, keywords, whiteboard, flags, creation_time }) => {
@@ -207,6 +210,10 @@
 
       if (!is_confirmed && !needsinfo) {
         memo.untriaged +=1
+      }
+
+      if (new Date(creation_time) > last3Months && !is_confirmed && !needsinfo) {
+        memo.lastMonthsUntriaged += 1
       }
 
       memo.asignee[assigned_to] ||= 0
@@ -238,6 +245,7 @@
       untriaged: 0,
       needsinfo: 0,
       lastMonth: 0,
+      lastMonthsUntriaged: 0,
       status: {},
       priority: {},
       severity: {},
@@ -249,6 +257,7 @@
   d3.select('#open-bugs-total').text(openBugsStats.total)
   d3.select('#last-months-bugs').text(openBugsStats.lastMonth)
   d3.select('#left-to-triage-total').text(openBugsStats.untriaged)
+  d3.select('#left-to-triage-last-months-total').text(openBugsStats.lastMonthsUntriaged)
   d3.select('#needsinfo-total').text(openBugsStats.needsinfo)
 
   for (const key in openBugsStats) {
@@ -256,6 +265,7 @@
     if (key === 'untriaged') continue
     if (key === 'needsinfo') continue
     if (key === 'lastMonth') continue
+    if (key === 'lastMonthsUntriaged') continue
 
     const data = Object.keys(openBugsStats[key])
       .sort()
@@ -299,6 +309,7 @@
     '#untriaged': ({ is_confirmed, flags }) => !is_confirmed && !flags.find(flag => flag.name === 'needinfo'),
     '#needinfo': ({ flags }) => !!flags.find(flag => flag.name === 'needinfo'),
     '#last-month': ({ creation_time }) => new Date(creation_time) > lastMonth,
+    '#last-months-untriaged': ({ creation_time, is_confirmed, flags }) => new Date(creation_time) > last3Months && !is_confirmed && !flags.find(flag => flag.name === 'needinfo'),
   }
 
   function updateBugsTable() {
