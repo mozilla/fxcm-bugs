@@ -70,8 +70,9 @@
       <a href=#>Total open bugs</a>: <output id=open-bugs-total>-</output>,
       <a href=#last-month>bugs created within the last month</a>: <output id=last-months-bugs>-</output>,
       bugs <a href=#untriaged>left to triage</a>: <output id=left-to-triage-total>-</output>,
-      <a href=#last-months-untriaged>left to triage within the last 3 months</a>: <output id=left-to-triage-last-months-total>-</output>
+      <a href=#last-quarter-untriaged>left to triage within the last 3 months</a>: <output id=left-to-triage-last-quarter-total>-</output>
       (unconfirmed and not flagged as needinfo),
+      <a href=#last-month-triaged>triaged bugs changed within the last month</a>: <output id=triaged-last-month-total>-</output>,
       bugs <a href=#needinfo>needing info</a>: <output id=needsinfo-total>-</output>.
     </p>
   </article>
@@ -170,6 +171,7 @@
   openBugsUrl.searchParams.set('include_fields', [
     'id',
     'creation_time',
+    'last_change_time',
     'summary',
     'status',
     'is_confirmed',
@@ -191,10 +193,10 @@
 
   const today = new Date()
   const lastMonth = Date.parse(new Date(today.getFullYear(), today.getMonth() - 1, today.getDate()))
-  const last3Months = Date.parse(new Date(today.getFullYear(), today.getMonth() - 3, today.getDate()))
+  const lastQuarter = Date.parse(new Date(today.getFullYear(), today.getMonth() - 3, today.getDate()))
 
   const openBugsStats = openBugs
-    .reduce((memo, { status, is_confirmed, assigned_to, priority, severity, keywords, whiteboard, flags, creation_time }) => {
+    .reduce((memo, { status, is_confirmed, assigned_to, priority, severity, keywords, whiteboard, flags, creation_time, last_change_time }) => {
       memo.status[status] ||= 0
       memo.status[status] += 1
 
@@ -212,8 +214,11 @@
         memo.untriaged +=1
       }
 
-      if (new Date(creation_time) > last3Months && !is_confirmed && !needsinfo) {
-        memo.lastMonthsUntriaged += 1
+      if (new Date(creation_time) > lastQuarter && !is_confirmed && !needsinfo) {
+        memo.lastQuarterUntriaged += 1
+      }
+      if (new Date(last_change_time) > lastMonth && (is_confirmed || needsinfo)) {
+        memo.lastMonthTriaged += 1
       }
 
       memo.asignee[assigned_to] ||= 0
@@ -245,7 +250,8 @@
       untriaged: 0,
       needsinfo: 0,
       lastMonth: 0,
-      lastMonthsUntriaged: 0,
+      lastQuarterUntriaged: 0,
+      lastMonthTriaged: 0,
       status: {},
       priority: {},
       severity: {},
@@ -257,15 +263,25 @@
   d3.select('#open-bugs-total').text(openBugsStats.total)
   d3.select('#last-months-bugs').text(openBugsStats.lastMonth)
   d3.select('#left-to-triage-total').text(openBugsStats.untriaged)
-  d3.select('#left-to-triage-last-months-total').text(openBugsStats.lastMonthsUntriaged)
+  d3.select('#left-to-triage-last-quarter-total').text(openBugsStats.lastQuarterUntriaged)
+  d3.select('#triaged-last-month-total').text(openBugsStats.lastMonthTriaged)
   d3.select('#needsinfo-total').text(openBugsStats.needsinfo)
+
+  function escapeHtml(html){
+    var text = document.createTextNode(html)
+    var p = document.createElement('p')
+    p.appendChild(text)
+    return p.innerHTML
+  }
+
 
   for (const key in openBugsStats) {
     if (key === 'total') continue
     if (key === 'untriaged') continue
     if (key === 'needsinfo') continue
     if (key === 'lastMonth') continue
-    if (key === 'lastMonthsUntriaged') continue
+    if (key === 'lastQuarterUntriaged') continue
+    if (key === 'lastMonthTriaged') continue
 
     const data = Object.keys(openBugsStats[key])
       .sort()
@@ -309,7 +325,8 @@
     '#untriaged': ({ is_confirmed, flags }) => !is_confirmed && !flags.find(flag => flag.name === 'needinfo'),
     '#needinfo': ({ flags }) => !!flags.find(flag => flag.name === 'needinfo'),
     '#last-month': ({ creation_time }) => new Date(creation_time) > lastMonth,
-    '#last-months-untriaged': ({ creation_time, is_confirmed, flags }) => new Date(creation_time) > last3Months && !is_confirmed && !flags.find(flag => flag.name === 'needinfo'),
+    '#last-quarter-untriaged': ({ creation_time, is_confirmed, flags }) => new Date(creation_time) > lastQuarter && !is_confirmed && !flags.find(flag => flag.name === 'needinfo'),
+    '#last-month-triaged': ({ last_change_time, is_confirmed, flags }) => new Date(last_change_time) > lastMonth && (is_confirmed || flags.find(flag => flag.name === 'needinfo')),
   }
 
   function updateBugsTable() {
@@ -334,7 +351,7 @@
         d.status,
         d.priority,
         d.severity,
-        `<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=${d.id}">${d.summary}</a>`
+        `<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=${d.id}">${escapeHtml(d.summary)}</a>`
       ])
       .enter()
       .append('td')
