@@ -69,12 +69,12 @@
     <p>
       <a href=#>Total open bugs</a>: <output id=open-bugs-total>-</output>,
       <a href=#last-month>bugs created within the last month</a>: <output id=last-months-bugs>-</output>,
-      bugs <a href=#untriaged>left to triage</a>: <output id=left-to-triage-total>-</output>,
-      <a href=#last-quarter-untriaged>left to triage within the last quarter</a>: <output id=left-to-triage-last-quarter-total>-</output>
-      (unconfirmed and not flagged as needinfo),
+      bugs <a href=#untriaged>left to triage*</a>: <output id=left-to-triage-total>-</output>,
+      <a href=#last-quarter-untriaged>left to triage* within the last quarter</a>: <output id=left-to-triage-last-quarter-total>-</output>
       <a href=#last-month-triaged>triaged bugs changed within the last month</a>: <output id=triaged-last-month-total>-</output>,
       bugs <a href=#needinfo>needing info</a>: <output id=needsinfo-total>-</output>.
     </p>
+    <p>* untriaged means unconfirmed and not flagged as needinfo, and without a priority or severity set</p>
   </article>
   <details closed>
     <summary>Detailed Statistics</summary>
@@ -210,7 +210,7 @@
         memo.needsinfo += 1
       }
 
-      if (!is_confirmed && !needsinfo) {
+      if (!is_confirmed && !needsinfo && priority === '--' && severity === '--') {
         memo.untriaged +=1
       }
 
@@ -322,11 +322,33 @@
   // this is the most simple way to do filtering, we probably need arg support here and more
   const filters = {
     '': Boolean,
-    '#untriaged': ({ is_confirmed, flags }) => !is_confirmed && !flags.find(flag => flag.name === 'needinfo'),
+    '#untriaged': ({
+      is_confirmed,
+      flags,
+      priority,
+      severity
+    }) => !is_confirmed
+      && !flags.find(flag => flag.name === 'needinfo')
+      && priority === '--'
+      && severity === '--',
     '#needinfo': ({ flags }) => !!flags.find(flag => flag.name === 'needinfo'),
     '#last-month': ({ creation_time }) => new Date(creation_time) > lastMonth,
-    '#last-quarter-untriaged': ({ creation_time, is_confirmed, flags }) => new Date(creation_time) > lastQuarter && !is_confirmed && !flags.find(flag => flag.name === 'needinfo'),
-    '#last-month-triaged': ({ last_change_time, is_confirmed, flags }) => new Date(last_change_time) > lastMonth && (is_confirmed || flags.find(flag => flag.name === 'needinfo')),
+    '#last-quarter-untriaged': ({
+      creation_time,
+      is_confirmed,
+      flags,
+      priority,
+      severity
+    }) => new Date(creation_time) > lastQuarter && !is_confirmed
+      && !flags.find(flag => flag.name === 'needinfo')
+      && priority === '--'
+      && severity === '--',
+    '#last-month-triaged': ({
+      last_change_time,
+      is_confirmed,
+      flags
+    }) => new Date(last_change_time) > lastMonth
+      && (is_confirmed || flags.find(flag => flag.name === 'needinfo')),
   }
 
   function updateBugsTable() {
