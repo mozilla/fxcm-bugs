@@ -13,6 +13,10 @@
       margin: 3ex 3em;
     }
 
+    .loading {
+      opacity: 0.3;
+    }
+
     path.counts-path {
       fill: none;
       stroke: black;
@@ -44,7 +48,9 @@
     summary {
       font-weight: bold;
     }
-
+    select {
+      font: inherit;
+    }
     output {
       font-weight: bold;
     }
@@ -53,7 +59,12 @@
 </head>
 <body>
   <head>
-    <h1>Credential Management Bugs: Password Manager</h1>
+    <h1>Credential Management Bugs:
+      <select name=component>
+        <option value="Password Manager">Password Manager</option>
+        <option value="Form Autofill">Form Autofill</option>
+      </select>
+    </h1>
   </head>
   <article>
     <h2>Bugs Created per Month</h2>
@@ -85,188 +96,6 @@
   </article>
 
 <script type=module>
-  // all bugs
-  const width = 1600
-  const height = 200
-  const marginTop = 20
-  const marginBottom = 20
-  const marginRight = 20
-  const marginLeft = 0
-
-  const svg = d3.select('#timeline')
-    .append("svg")
-      .attr("width", "100%")
-      .attr("height", "30%")
-      .attr('viewBox', '0 0 ' + (width + marginLeft + marginRight) + ' ' + (height  + marginTop + marginBottom))
-      .attr('preserveAspectRatio', 'xMidYMid meet')
-  const g = svg.append("g")
-      .attr("transform", "translate(" + marginLeft + "," + marginTop + ")")
-
-  const y = d3.scaleLinear()
-    .domain([0, 100])
-    .range([ height, 0 ])
-  const gy = g.append("g")
-    .attr("transform", "translate(" + (width - marginRight) + ",0)")
-    .call(d3.axisRight(y))
-
-  const gx = g.append("g")
-    .attr("transform", "translate(0," + height + ")")
-
-  const countsPath = g.append("path")
-      .attr("class", "counts-path")
-
-  const allBugsUrl = new URL('https://bugzilla.mozilla.org/rest/bug')
-  allBugsUrl.searchParams.set('include_fields', ['creation_time'])
-  allBugsUrl.searchParams.set('component', 'Password Manager')
-  allBugsUrl.searchParams.set('limit', 0)
-  
-  const allBugsReq = await fetch(allBugsUrl)
-  const { bugs: allBugs } = await allBugsReq.json()
-
-  const allBugsStats = allBugs
-    .reduce((memo, { creation_time }) => {
-      const month = creation_time.split('-', 2).join('-')
-      memo.months[month] ||= 0
-      memo.months[month] += 1
-
-      return memo
-    }, {
-      months: {},
-    })
-  
-  const counts = Object.keys(allBugsStats.months)
-    .sort()
-    .map(month => ({
-      date: new Date(month),
-      count: allBugsStats.months[month],
-    }))
-
-  const last12Months = counts.slice().reverse().slice(1, 13)
-  const averageBugsPerMonth = Math.round(last12Months.reduce((memo, { count }) => memo + count, 0) / 12)
-
-  d3.select('#bugs-per-month').text(averageBugsPerMonth)
-
-  y.domain([0, d3.max(counts, d => d.count)])
-  gy.call(d3.axisRight(y))
-
-  const x = d3.scaleUtc()
-    .domain([
-      counts[0].date,
-      counts[counts.length - 1].date
-    ])
-    .range([marginLeft, width - marginRight])
-
-    gx.call(d3.axisBottom(x))
-
-    countsPath
-      .datum(counts)
-      .attr("d",
-        d3.line()
-          .x(d => x(d.date))
-          .y(d => y(d.count))
-        )
-
-  // the open bugs
-  const openBugsUrl = new URL('https://bugzilla.mozilla.org/rest/bug')
-  openBugsUrl.searchParams.set('include_fields', [
-    'id',
-    'creation_time',
-    'last_change_time',
-    'summary',
-    'status',
-    'is_confirmed',
-    'type',
-    'assigned_to',
-    'last_change_time',
-    'priority',
-    'severity',
-    'whiteboard',
-    'keywords',
-    'flags',
-  ])
-  openBugsUrl.searchParams.set('component', 'Password Manager')
-  openBugsUrl.searchParams.set('resolution', '---')
-  openBugsUrl.searchParams.set('limit', 0)
-  
-  const OpenBugsReq = await fetch(openBugsUrl)
-  const { bugs: openBugs } = await OpenBugsReq.json()
-
-  const today = new Date()
-  const lastMonth = Date.parse(new Date(today.getFullYear(), today.getMonth() - 1, today.getDate()))
-  const lastQuarter = Date.parse(new Date(today.getFullYear(), today.getMonth() - 3, today.getDate()))
-
-  const openBugsStats = openBugs
-    .reduce((memo, { status, is_confirmed, assigned_to, priority, severity, keywords, whiteboard, flags, creation_time, last_change_time }) => {
-      memo.status[status] ||= 0
-      memo.status[status] += 1
-
-      if (new Date(creation_time) > lastMonth) {
-        memo.lastMonth += 1
-      }
-
-      const needsinfo = !!flags.find(flag => flag.name === 'needinfo')
-
-      if (needsinfo) {
-        memo.needsinfo += 1
-      }
-
-      if (!is_confirmed && !needsinfo && priority === '--' && severity === '--') {
-        memo.untriaged +=1
-      }
-
-      if (new Date(creation_time) > lastQuarter && !is_confirmed && !needsinfo) {
-        memo.lastQuarterUntriaged += 1
-      }
-      if (new Date(last_change_time) > lastMonth && (is_confirmed || needsinfo)) {
-        memo.lastMonthTriaged += 1
-      }
-
-      memo.asignee[assigned_to] ||= 0
-      memo.asignee[assigned_to] += 1
-
-      memo.priority[priority] ||= 0
-      memo.priority[priority] += 1
-
-      memo.severity[severity] ||= 0
-      memo.severity[severity] += 1
-
-      for (const keyword of keywords) {
-        memo.keywords[keyword] ||= 0
-        memo.keywords[keyword] += 1
-      }
-
-      const whiteboardTags = whiteboard
-        .split(/\][\s,]*\[*/)
-        .map(tag => tag.replace(/^\s*\[/, ''))
-        .filter(Boolean)
-      for (const tag of whiteboardTags) {
-        memo.whiteboard[tag] ||= 0
-        memo.whiteboard[tag] += 1
-      }
-
-      return memo
-    }, {
-      total: openBugs.length,
-      untriaged: 0,
-      needsinfo: 0,
-      lastMonth: 0,
-      lastQuarterUntriaged: 0,
-      lastMonthTriaged: 0,
-      status: {},
-      priority: {},
-      severity: {},
-      asignee: {},
-      keywords: {},
-      whiteboard: {},
-    })
-  
-  d3.select('#open-bugs-total').text(openBugsStats.total)
-  d3.select('#last-months-bugs').text(openBugsStats.lastMonth)
-  d3.select('#left-to-triage-total').text(openBugsStats.untriaged)
-  d3.select('#left-to-triage-last-quarter-total').text(openBugsStats.lastQuarterUntriaged)
-  d3.select('#triaged-last-month-total').text(openBugsStats.lastMonthTriaged)
-  d3.select('#needsinfo-total').text(openBugsStats.needsinfo)
-
   function escapeHtml(html){
     var text = document.createTextNode(html)
     var p = document.createElement('p')
@@ -274,113 +103,411 @@
     return p.innerHTML
   }
 
+  class Timeline {
+    constructor({ timelineSelector, componentSelector, bugsPerMonthSelector }) {
+      this.componentSelector = componentSelector
+      this.bugsPerMonthSelector = bugsPerMonthSelector
 
-  for (const key in openBugsStats) {
-    if (key === 'total') continue
-    if (key === 'untriaged') continue
-    if (key === 'needsinfo') continue
-    if (key === 'lastMonth') continue
-    if (key === 'lastQuarterUntriaged') continue
-    if (key === 'lastMonthTriaged') continue
+      const width = 1600
+      const height = 200
+      const marginTop = 20
+      const marginBottom = 20
+      const marginRight = 20
+      const marginLeft = 0
 
-    const data = Object.keys(openBugsStats[key])
-      .sort()
-      .map(title => ({
-        title,
-        count: openBugsStats[key][title]
-      }))
-    const article = d3.select('#categories').append('article')
-    article.append('h4').text(key)
-    article.append('ul')
-      .selectAll('li')
-      .data(data)
-      .enter()
-      .append('li')
-      .html(d => `${d.title}: <strong>${d.count}</strong>`)
-  }
+      this.svg = d3.select(timelineSelector)
+        .append("svg")
+        .attr("width", "100%")
+        .attr("height", "30%")
+        .attr('viewBox', '0 0 ' + (width + marginLeft + marginRight) + ' ' + (height  + marginTop + marginBottom))
+        .attr('preserveAspectRatio', 'xMidYMid meet')
+      const g = this.svg.append("g")
+        .attr("transform", "translate(" + marginLeft + "," + marginTop + ")")
 
-  const table = d3.select('#bugs-list')
-    .append('table')
-    
-  table.append('thead')
-    .append('tr')
-    .selectAll('th')
-    .data([
-      'ID',
-      'Created',
-      'Status',
-      'Priority',
-      'Severity',
-      'Summary'
-    ])
-    .enter()
-    .append('th')
-    .html(d => d)
+      this.x = d3.scaleUtc()
+        .range([marginLeft, width - marginRight])
+      
+      this.gx = g.append("g")
+        .attr("transform", "translate(0," + height + ")")
 
-  const tbody = table.append('tbody')
+      this.y = d3.scaleLinear()
+        .domain([0, 100])
+        .range([ height, 0 ])
 
-  // this is the most simple way to do filtering, we probably need arg support here and more
-  const filters = {
-    '': Boolean,
-    '#untriaged': ({
-      is_confirmed,
-      flags,
-      priority,
-      severity
-    }) => !is_confirmed
-      && !flags.find(flag => flag.name === 'needinfo')
-      && priority === '--'
-      && severity === '--',
-    '#needinfo': ({ flags }) => !!flags.find(flag => flag.name === 'needinfo'),
-    '#last-month': ({ creation_time }) => new Date(creation_time) > lastMonth,
-    '#last-quarter-untriaged': ({
-      creation_time,
-      is_confirmed,
-      flags,
-      priority,
-      severity
-    }) => new Date(creation_time) > lastQuarter && !is_confirmed
-      && !flags.find(flag => flag.name === 'needinfo')
-      && priority === '--'
-      && severity === '--',
-    '#last-month-triaged': ({
-      last_change_time,
-      is_confirmed,
-      flags
-    }) => new Date(last_change_time) > lastMonth
-      && (is_confirmed || flags.find(flag => flag.name === 'needinfo')),
-  }
+      this.gy = g.append("g")
+        .attr("transform", "translate(" + (width - marginRight) + ",0)")
 
-  function updateBugsTable() {
-    // find filter function
-    const filter = filters[location.hash]
+      this.countsPath = g.append("path")
+        .attr("class", "counts-path")
 
-    const data = openBugs.filter(filter)
+      document.querySelector(componentSelector).addEventListener('change', () => this.load())
+    }
 
-    d3.select('#bugs-filter').text(`${data.length} ${location.hash && location.hash.slice(1) || 'all'}`)
+    async load() {
+      this.#toggleLoading(true)
 
-    // bind data to the table
-    const tr = tbody.selectAll('tr')
-      .data(data, d => d.id)
+      const component = document.querySelector(`${this.componentSelector} option:checked`).value
 
-    // update table
-    tr.enter()
-      .append('tr')
-      .selectAll('td')
-      .data(d => [
-        d.id,
-        (new Date(d.creation_time)).toLocaleDateString(),
-        d.status,
-        d.priority,
-        d.severity,
-        `<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=${d.id}">${escapeHtml(d.summary)}</a>`
+      const url = new URL('https://bugzilla.mozilla.org/rest/bug')
+      url.searchParams.set('include_fields', ['creation_time'])
+      url.searchParams.set('component', component)
+      url.searchParams.set('limit', 0)
+      
+      const request = await fetch(url)
+      const { bugs } = await request.json()
+
+      const stats = bugs
+        .reduce((memo, { creation_time }) => {
+          const month = creation_time.split('-', 2).join('-')
+          memo.months[month] ||= 0
+          memo.months[month] += 1
+
+          return memo
+        }, {
+          months: {},
+        })
+      
+      this.counts = Object.keys(stats.months)
+        .sort()
+        .map(month => ({
+          date: new Date(month),
+          count: stats.months[month],
+        }))
+
+      this.#toggleLoading(false)
+      this.#render()
+    }
+
+    #toggleLoading(loading) {
+      this.svg.classed('loading', loading)
+      d3.select(this.bugsPerMonthSelector).classed('loading', loading)
+    }
+
+    #render() {
+      const last12Months = this.counts.slice().reverse().slice(1, 13)
+      const averageBugsPerMonth = Math.round(last12Months.reduce((memo, { count }) => memo + count, 0) / 12)
+
+      d3.select(this.bugsPerMonthSelector).text(averageBugsPerMonth)
+
+      this.x.domain([
+        this.counts[0].date,
+        this.counts[this.counts.length - 1].date
       ])
-      .enter()
-      .append('td')
-      .html(d => d)
-    tr.exit().remove()
-   }
-   updateBugsTable()
+      this.gx.call(d3.axisBottom(this.x))
+      
+      this.y.domain([0, d3.max(this.counts, d => d.count)])
+      this.gy.call(d3.axisRight(this.y))
 
-   window.onhashchange = updateBugsTable
+      this.countsPath
+        .datum(this.counts)
+        .attr("d",
+          d3.line()
+            .x(d => this.x(d.date))
+            .y(d => this.y(d.count))
+          )
+    }
+  }
+
+  class Explorer {
+    constructor({
+      componentSelector,
+      openBugsTotalSelector,
+      lastMonthsBugsSelector,
+      leftToTriageTotalSelector,
+      leftToTriageLastQuarterTotalSelector,
+      triagedLastMonthTotalSelector,
+      needsinfoTotalSelector,
+      categoriesSelector,
+      tableSelector,
+    }) {
+      this.componentSelector = componentSelector
+      this.openBugsTotalSelector = openBugsTotalSelector
+      this.lastMonthsBugsSelector = lastMonthsBugsSelector
+      this.leftToTriageTotalSelector = leftToTriageTotalSelector
+      this.leftToTriageLastQuarterTotalSelector = leftToTriageLastQuarterTotalSelector
+      this.triagedLastMonthTotalSelector = triagedLastMonthTotalSelector
+      this.needsinfoTotalSelector = needsinfoTotalSelector
+      this.categoriesSelector = categoriesSelector
+
+      const table = d3.select(tableSelector)
+        .append('table')
+        
+      table.append('thead')
+        .append('tr')
+        .selectAll('th')
+        .data([
+          'ID',
+          'Created',
+          'Status',
+          'Priority',
+          'Severity',
+          'Summary'
+        ])
+        .enter()
+        .append('th')
+        .html(d => d)
+
+      this.tbody = table.append('tbody')
+
+      window.addEventListener('hashchange', () => this.#renderTable())
+ 
+      document.querySelector(componentSelector).addEventListener('change', () => this.load())
+    }
+
+    #today = new Date()
+    #lastMonth = Date.parse(new Date(this.#today.getFullYear(), this.#today.getMonth() - 1, this.#today.getDate()))
+    #lastQuarter = Date.parse(new Date(this.#today.getFullYear(), this.#today.getMonth() - 3, this.#today.getDate()))
+
+
+    // this is the most simple way to do filtering, we probably need arg support here and more
+    #filters = {
+      '': Boolean,
+
+      '#untriaged': ({
+        is_confirmed,
+        flags,
+        priority,
+        severity
+      }) => !is_confirmed
+        && !flags.find(flag => flag.name === 'needinfo')
+        && priority === '--'
+        && severity === '--',
+
+      '#needinfo': ({ flags }) => !!flags.find(flag => flag.name === 'needinfo'),
+
+      '#last-month': ({ creation_time }) => new Date(creation_time) > this.#lastMonth,
+
+      '#last-quarter-untriaged': ({
+        creation_time,
+        is_confirmed,
+        flags,
+        priority,
+        severity
+      }) => new Date(creation_time) > this.#lastQuarter && !is_confirmed
+        && !flags.find(flag => flag.name === 'needinfo')
+        && priority === '--'
+        && severity === '--',
+
+      '#last-month-triaged': ({
+        last_change_time,
+        is_confirmed,
+        flags
+      }) => new Date(last_change_time) > this.#lastMonth
+        && (is_confirmed || flags.find(flag => flag.name === 'needinfo')),
+    }
+
+    async load() {
+      this.#toggleLoading(true)
+
+      const url = new URL('https://bugzilla.mozilla.org/rest/bug')
+      url.searchParams.set('include_fields', [
+        'id',
+        'creation_time',
+        'last_change_time',
+        'summary',
+        'status',
+        'is_confirmed',
+        'type',
+        'assigned_to',
+        'last_change_time',
+        'priority',
+        'severity',
+        'whiteboard',
+        'keywords',
+        'flags',
+      ])
+      const component = document.querySelector(`${this.componentSelector} option:checked`).value
+      url.searchParams.set('component', component)
+      url.searchParams.set('resolution', '---')
+      url.searchParams.set('limit', 0)
+      
+      const request = await fetch(url)
+      const { bugs } = await request.json()
+
+      this.bugs = bugs
+
+      this.stats = bugs
+        .reduce((memo, {
+          status,
+          is_confirmed,
+          assigned_to,
+          priority,
+          severity,
+          keywords,
+          whiteboard,
+          flags,
+          creation_time,
+          last_change_time
+        }) => {
+          memo.status[status] ||= 0
+          memo.status[status] += 1
+
+          if (new Date(creation_time) > this.#lastMonth) {
+            memo.lastMonth += 1
+          }
+
+          const needsinfo = !!flags.find(flag => flag.name === 'needinfo')
+
+          if (needsinfo) {
+            memo.needsinfo += 1
+          }
+
+          if (!is_confirmed && !needsinfo && priority === '--' && severity === '--') {
+            memo.untriaged +=1
+          }
+
+          if (new Date(creation_time) > this.#lastQuarter && !is_confirmed && !needsinfo) {
+            memo.lastQuarterUntriaged += 1
+          }
+          if (new Date(last_change_time) > this.#lastMonth && (is_confirmed || needsinfo)) {
+            memo.lastMonthTriaged += 1
+          }
+
+          memo.asignee[assigned_to] ||= 0
+          memo.asignee[assigned_to] += 1
+
+          memo.priority[priority] ||= 0
+          memo.priority[priority] += 1
+
+          memo.severity[severity] ||= 0
+          memo.severity[severity] += 1
+
+          for (const keyword of keywords) {
+            memo.keywords[keyword] ||= 0
+            memo.keywords[keyword] += 1
+          }
+
+          const whiteboardTags = whiteboard
+            .split(/\][\s,]*\[*/)
+            .map(tag => tag.replace(/^\s*\[/, ''))
+            .filter(Boolean)
+          for (const tag of whiteboardTags) {
+            memo.whiteboard[tag] ||= 0
+            memo.whiteboard[tag] += 1
+          }
+
+          return memo
+        }, {
+          total: bugs.length,
+          untriaged: 0,
+          needsinfo: 0,
+          lastMonth: 0,
+          lastQuarterUntriaged: 0,
+          lastMonthTriaged: 0,
+          status: {},
+          priority: {},
+          severity: {},
+          asignee: {},
+          keywords: {},
+          whiteboard: {},
+        })
+
+      this.#toggleLoading(false)
+      this.#render()
+    }
+
+    #toggleLoading(loading) {
+      this.tbody.classed('loading', loading)
+      d3.select(this.openBugsTotalSelector).classed('loading', loading)
+      d3.select(this.lastMonthsBugsSelector).classed('loading', loading)
+      d3.select(this.leftToTriageTotalSelector).classed('loading', loading)
+      d3.select(this.leftToTriageLastQuarterTotalSelector).classed('loading', loading)
+      d3.select(this.triagedLastMonthTotalSelector).classed('loading', loading)
+      d3.select(this.needsinfoTotalSelector).classed('loading', loading)
+      d3.select(this.categoriesSelector).classed('loading', loading)
+    }
+
+    #render() {
+      this.#renderStats()
+      this.#renderDetails()
+      this.#renderTable()
+    }
+
+    #renderStats() {
+      d3.select(this.openBugsTotalSelector).text(this.stats.total)
+      d3.select(this.lastMonthsBugsSelector).text(this.stats.lastMonth)
+      d3.select(this.leftToTriageTotalSelector).text(this.stats.untriaged)
+      d3.select(this.leftToTriageLastQuarterTotalSelector).text(this.stats.lastQuarterUntriaged)
+      d3.select(this.triagedLastMonthTotalSelector).text(this.stats.lastMonthTriaged)
+      d3.select(this.needsinfoTotalSelector).text(this.stats.needsinfo)
+    }
+
+    #renderDetails() {
+      for (const key in this.stats) {
+        if (key === 'total') continue
+        if (key === 'untriaged') continue
+        if (key === 'needsinfo') continue
+        if (key === 'lastMonth') continue
+        if (key === 'lastQuarterUntriaged') continue
+        if (key === 'lastMonthTriaged') continue
+
+        const data = Object.keys(this.stats[key])
+          .sort()
+          .map(title => ({
+            title,
+            count: this.stats[key][title]
+          }))
+        const article = d3.select(this.categoriesSelector).append('article')
+        article.append('h4').text(key)
+        article.append('ul')
+          .selectAll('li')
+          .data(data)
+          .enter()
+          .append('li')
+          .html(d => `${d.title}: <strong>${d.count}</strong>`)
+      }
+    }
+
+    #renderTable() {
+      // find filter function
+      const filter = this.#filters[location.hash]
+
+      const data = this.bugs.filter(filter)
+
+      d3.select('#bugs-filter').text(`${data.length} ${location.hash && location.hash.slice(1) || 'all'}`)
+
+      // bind data to the table
+      const tr = this.tbody.selectAll('tr')
+        .data(data, d => d.id)
+
+      // update table
+      tr.enter()
+        .append('tr')
+        .selectAll('td')
+        .data(d => [
+          d.id,
+          (new Date(d.creation_time)).toLocaleDateString(),
+          d.status,
+          d.priority,
+          d.severity,
+          `<a href="https://bugzilla.mozilla.org/show_bug.cgi?id=${d.id}">${escapeHtml(d.summary)}</a>`
+        ])
+        .enter()
+        .append('td')
+        .html(d => d)
+
+      tr.exit().remove()
+    }
+  }
+
+  const timeline = new Timeline({
+    timelineSelector: '#timeline',
+    componentSelector: 'select[name=component]',
+    bugsPerMonthSelector: '#bugs-per-month',
+  })
+  
+  const explorer = new Explorer({
+    componentSelector: 'select[name=component]',
+    openBugsTotalSelector: '#open-bugs-total',
+    lastMonthsBugsSelector: '#last-months-bugs',
+    leftToTriageTotalSelector: '#left-to-triage-total',
+    leftToTriageLastQuarterTotalSelector: '#left-to-triage-last-quarter-total',
+    triagedLastMonthTotalSelector: '#triaged-last-month-total',
+    needsinfoTotalSelector: '#needsinfo-total',
+    categoriesSelector: '#categories',
+    tableSelector: '#bugs-list',
+  })
+
+  await timeline.load()
+  await explorer.load()
 </script>
