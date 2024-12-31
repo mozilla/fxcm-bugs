@@ -1,5 +1,5 @@
 # Credential Management Bugs: Password Manager
-A dashboard to get an overview about the bugs related to password manager.
+A dashboard to get an overview about the bugs related to credential managements owned components.
 
 ## Resources
 * [Bugdash](https://bugdash.moz.tools/?component=Toolkit%3APassword+Manager#tab.triage)
