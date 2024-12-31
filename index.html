@@ -22,21 +22,21 @@
       stroke: black;
     }
 
-    #categories {
+    details article {
       display: flex;
     }
-
-    #categories article {
+    details article div {
       flex: auto;
-       gap: 3em;
+      gap: 3em;
     }
-
-    #categories article h4 {
+    details article h3 {
       text-transform: capitalize;
     }
-    #categories article ul {
+    details article ul {
       padding-left: 0;
+      list-style-type: none;
     }
+
     table {
       border-collapse: collapse;
     }
@@ -66,34 +66,35 @@
       </select>
     </h1>
   </head>
-  <article>
+  <section id=timeline>
     <h2>Bugs Created per Month</h2>
-    <div id=timeline></div>
+    <svg></svg>
     <p>
-      Bugs created per month: <output id=bugs-per-month>-</output> (average over last 12 months).
+      Bugs created per month: <output data-stats=averageBugsPerMonth>-</output> (average over last 12 months).
     </p>
-  </article>
-  <head>
+  </section>
+  <section id=explorer>
     <h2>Open Bugs</h2>
-  </head>
-  <article>
-    <p>
-      <a href=#>Total open bugs</a>: <output id=open-bugs-total>-</output>,
-      <a href=#last-month>bugs created within the last month</a>: <output id=last-months-bugs>-</output>,
-      bugs <a href=#untriaged>left to triage*</a>: <output id=left-to-triage-total>-</output>,
-      <a href=#last-quarter-untriaged>left to triage* within the last quarter</a>: <output id=left-to-triage-last-quarter-total>-</output>
-      <a href=#last-month-triaged>triaged bugs changed within the last month</a>: <output id=triaged-last-month-total>-</output>,
-      bugs <a href=#needinfo>needing info</a>: <output id=needsinfo-total>-</output>.
-    </p>
-    <p>* untriaged means unconfirmed and not flagged as needinfo, and without a priority or severity set</p>
-  </article>
-  <details closed>
-    <summary>Detailed Statistics</summary>
-    <section id=categories></section>
-  </details>
-  <article id=bugs-list>
-    <h2>List of <output id=bugs-filter>all</output> Open Bugs</h2>
-  </article>
+    <article>
+      <p>
+        <a href=#>Total open bugs</a>: <output data-stats=total>-</output>,
+        <a href=#last-month>bugs created within the last month</a>: <output data-stats=lastMonth>-</output>,
+        bugs <a href=#untriaged>left to triage*</a>: <output data-stats=untriaged>-</output>,
+        <a href=#last-quarter-untriaged>left to triage* within the last quarter</a>: <output data-stats=lastQuarterUntriaged>-</output>
+        <a href=#last-month-triaged>triaged bugs changed within the last month</a>: <output data-stats=lastMonthTriaged>-</output>,
+        bugs <a href=#needinfo>needing info</a>: <output data-stats=needsinfo>-</output>.
+      </p>
+      <p>* untriaged means unconfirmed and not flagged as needinfo, and without a priority or severity set</p>
+    </article>
+    <details closed>
+      <summary>Detailed Statistics</summary>
+      <article></article>
+    </details>
+    <article>
+      <h2>List of <output id=bugs-filter>all</output> Open Bugs</h2>
+      <table></table>
+    </article>
+  </section>
 
 <script type=module>
   function escapeHtml(html){
@@ -103,10 +104,19 @@
     return p.innerHTML
   }
 
+  function renderStats(element, stats) {
+    for (const name in stats) {
+      const output = element.querySelector(`output[data-stats="${name}"]`)
+      if (output) {
+        output.value = stats[name]
+      }
+    }
+  }
+
   class Timeline {
-    constructor({ timelineSelector, componentSelector, bugsPerMonthSelector }) {
-      this.componentSelector = componentSelector
-      this.bugsPerMonthSelector = bugsPerMonthSelector
+    constructor(element, { componentSelect }) {
+      this.element = element
+      this.componentSelect = componentSelect
 
       const width = 1600
       const height = 200
@@ -115,12 +125,13 @@
       const marginRight = 20
       const marginLeft = 0
 
-      this.svg = d3.select(timelineSelector)
-        .append("svg")
+      this.svg = d3.select(element)
+        .select("svg")
         .attr("width", "100%")
         .attr("height", "30%")
         .attr('viewBox', '0 0 ' + (width + marginLeft + marginRight) + ' ' + (height  + marginTop + marginBottom))
         .attr('preserveAspectRatio', 'xMidYMid meet')
+
       const g = this.svg.append("g")
         .attr("transform", "translate(" + marginLeft + "," + marginTop + ")")
 
@@ -140,13 +151,13 @@
       this.countsPath = g.append("path")
         .attr("class", "counts-path")
 
-      document.querySelector(componentSelector).addEventListener('change', () => this.load())
+      componentSelect.addEventListener('change', () => this.load())
     }
 
     async load() {
       this.#toggleLoading(true)
 
-      const component = document.querySelector(`${this.componentSelector} option:checked`).value
+      const component = this.componentSelect.querySelector('option:checked').value
 
       const url = new URL('https://bugzilla.mozilla.org/rest/bug')
       url.searchParams.set('include_fields', ['creation_time'])
@@ -179,16 +190,21 @@
     }
 
     #toggleLoading(loading) {
-      this.svg.classed('loading', loading)
-      d3.select(this.bugsPerMonthSelector).classed('loading', loading)
+      d3.select(this.element).classed('loading', loading)
     }
 
     #render() {
+      this.#renderStats()
+      this.#renderGraph()
+    }
+
+    #renderStats() {
       const last12Months = this.counts.slice().reverse().slice(1, 13)
       const averageBugsPerMonth = Math.round(last12Months.reduce((memo, { count }) => memo + count, 0) / 12)
+      renderStats(this.element, { averageBugsPerMonth })
+    }
 
-      d3.select(this.bugsPerMonthSelector).text(averageBugsPerMonth)
-
+    #renderGraph() {
       this.x.domain([
         this.counts[0].date,
         this.counts[this.counts.length - 1].date
@@ -209,28 +225,12 @@
   }
 
   class Explorer {
-    constructor({
-      componentSelector,
-      openBugsTotalSelector,
-      lastMonthsBugsSelector,
-      leftToTriageTotalSelector,
-      leftToTriageLastQuarterTotalSelector,
-      triagedLastMonthTotalSelector,
-      needsinfoTotalSelector,
-      categoriesSelector,
-      tableSelector,
-    }) {
-      this.componentSelector = componentSelector
-      this.openBugsTotalSelector = openBugsTotalSelector
-      this.lastMonthsBugsSelector = lastMonthsBugsSelector
-      this.leftToTriageTotalSelector = leftToTriageTotalSelector
-      this.leftToTriageLastQuarterTotalSelector = leftToTriageLastQuarterTotalSelector
-      this.triagedLastMonthTotalSelector = triagedLastMonthTotalSelector
-      this.needsinfoTotalSelector = needsinfoTotalSelector
-      this.categoriesSelector = categoriesSelector
+    constructor(element, { componentSelect }) {
+      this.componentSelect = componentSelect
+      this.element = element
 
-      const table = d3.select(tableSelector)
-        .append('table')
+      const table = d3.select(this.element)
+        .select('table')
         
       table.append('thead')
         .append('tr')
@@ -251,7 +251,7 @@
 
       window.addEventListener('hashchange', () => this.#renderTable())
  
-      document.querySelector(componentSelector).addEventListener('change', () => this.load())
+      componentSelect.addEventListener('change', () => this.load())
     }
 
     #today = new Date()
@@ -261,9 +261,9 @@
 
     // this is the most simple way to do filtering, we probably need arg support here and more
     #filters = {
-      '': Boolean,
+      'all': Boolean,
 
-      '#untriaged': ({
+      'untriaged': ({
         is_confirmed,
         flags,
         priority,
@@ -273,11 +273,11 @@
         && priority === '--'
         && severity === '--',
 
-      '#needinfo': ({ flags }) => !!flags.find(flag => flag.name === 'needinfo'),
+      'needinfo': ({ flags }) => !!flags.find(flag => flag.name === 'needinfo'),
 
-      '#last-month': ({ creation_time }) => new Date(creation_time) > this.#lastMonth,
+      'last-month': ({ creation_time }) => new Date(creation_time) > this.#lastMonth,
 
-      '#last-quarter-untriaged': ({
+      'last-quarter-untriaged': ({
         creation_time,
         is_confirmed,
         flags,
@@ -288,12 +288,20 @@
         && priority === '--'
         && severity === '--',
 
-      '#last-month-triaged': ({
+      'last-month-triaged': ({
         last_change_time,
         is_confirmed,
         flags
       }) => new Date(last_change_time) > this.#lastMonth
         && (is_confirmed || flags.find(flag => flag.name === 'needinfo')),
+    }
+    
+    get #filterName() {
+      return location.hash && location.hash.slice(1) || 'all'
+    }
+
+    get #filter() {
+      return this.#filters[this.#filterName]
     }
 
     async load() {
@@ -316,7 +324,7 @@
         'keywords',
         'flags',
       ])
-      const component = document.querySelector(`${this.componentSelector} option:checked`).value
+      const component = this.componentSelect.querySelector('option:checked').value
       url.searchParams.set('component', component)
       url.searchParams.set('resolution', '---')
       url.searchParams.set('limit', 0)
@@ -407,14 +415,7 @@
     }
 
     #toggleLoading(loading) {
-      this.tbody.classed('loading', loading)
-      d3.select(this.openBugsTotalSelector).classed('loading', loading)
-      d3.select(this.lastMonthsBugsSelector).classed('loading', loading)
-      d3.select(this.leftToTriageTotalSelector).classed('loading', loading)
-      d3.select(this.leftToTriageLastQuarterTotalSelector).classed('loading', loading)
-      d3.select(this.triagedLastMonthTotalSelector).classed('loading', loading)
-      d3.select(this.needsinfoTotalSelector).classed('loading', loading)
-      d3.select(this.categoriesSelector).classed('loading', loading)
+      d3.select(this.element).classed('loading', loading)
     }
 
     #render() {
@@ -424,15 +425,11 @@
     }
 
     #renderStats() {
-      d3.select(this.openBugsTotalSelector).text(this.stats.total)
-      d3.select(this.lastMonthsBugsSelector).text(this.stats.lastMonth)
-      d3.select(this.leftToTriageTotalSelector).text(this.stats.untriaged)
-      d3.select(this.leftToTriageLastQuarterTotalSelector).text(this.stats.lastQuarterUntriaged)
-      d3.select(this.triagedLastMonthTotalSelector).text(this.stats.lastMonthTriaged)
-      d3.select(this.needsinfoTotalSelector).text(this.stats.needsinfo)
+      renderStats(this.element, this.stats)
     }
 
     #renderDetails() {
+      const data = []
       for (const key in this.stats) {
         if (key === 'total') continue
         if (key === 'untriaged') continue
@@ -440,37 +437,59 @@
         if (key === 'lastMonth') continue
         if (key === 'lastQuarterUntriaged') continue
         if (key === 'lastMonthTriaged') continue
-
-        const data = Object.keys(this.stats[key])
+        
+        const stats = Object.keys(this.stats[key])
           .sort()
           .map(title => ({
             title,
             count: this.stats[key][title]
           }))
-        const article = d3.select(this.categoriesSelector).append('article')
-        article.append('h4').text(key)
-        article.append('ul')
-          .selectAll('li')
-          .data(data)
-          .enter()
-          .append('li')
-          .html(d => `${d.title}: <strong>${d.count}</strong>`)
+
+        data.push({ key, stats })
       }
+      
+      // clear dom. This should not be needed, we should leverage d3's update power instead
+      d3.select(this.element)
+        .select('details')
+        .select('article')
+        .html('')
+
+      const div =  d3.select(this.element)
+        .select('details')
+        .select('article')
+        .selectAll('div')
+        .data(data, d => d.stats)
+
+      div.enter()
+        .append('div')
+        .each(function(d) {
+          const bro = d3.select(this)
+          bro.append('h3').text(d => d.key)
+
+          const li = bro.append('ul')
+            .selectAll('li')
+            .data(d => d.stats)
+
+          li.enter()
+            .append('li')
+            .html(d => `${d.title}: <strong>${d.count}</strong>`)
+      
+          li.exit().remove()
+        })
+
+      div.exit().remove()
     }
 
     #renderTable() {
-      // find filter function
-      const filter = this.#filters[location.hash]
+      const data = this.bugs.filter(this.#filter)
 
-      const data = this.bugs.filter(filter)
-
-      d3.select('#bugs-filter').text(`${data.length} ${location.hash && location.hash.slice(1) || 'all'}`)
+      d3.select('#bugs-filter').text(`${data.length} ${this.#filterName}`)
 
       // bind data to the table
       const tr = this.tbody.selectAll('tr')
         .data(data, d => d.id)
 
-      // update table
+      // update rows
       tr.enter()
         .append('tr')
         .selectAll('td')
@@ -486,28 +505,20 @@
         .append('td')
         .html(d => d)
 
+      // remove rows
       tr.exit().remove()
     }
   }
 
-  const timeline = new Timeline({
-    timelineSelector: '#timeline',
-    componentSelector: 'select[name=component]',
-    bugsPerMonthSelector: '#bugs-per-month',
+  const componentSelect = document.querySelector('select[name=component]')
+  const timeline = new Timeline(document.querySelector('#timeline'), {
+    componentSelect,
   })
-  
-  const explorer = new Explorer({
-    componentSelector: 'select[name=component]',
-    openBugsTotalSelector: '#open-bugs-total',
-    lastMonthsBugsSelector: '#last-months-bugs',
-    leftToTriageTotalSelector: '#left-to-triage-total',
-    leftToTriageLastQuarterTotalSelector: '#left-to-triage-last-quarter-total',
-    triagedLastMonthTotalSelector: '#triaged-last-month-total',
-    needsinfoTotalSelector: '#needsinfo-total',
-    categoriesSelector: '#categories',
-    tableSelector: '#bugs-list',
+  const explorer = new Explorer(document.querySelector('#explorer'), {
+    componentSelect,
   })
 
-  await timeline.load()
-  await explorer.load()
+  // kickoff loading in parallel
+  timeline.load()
+  explorer.load()
 </script>
