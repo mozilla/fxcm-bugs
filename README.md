@@ -1,4 +1,4 @@
-# Credential Management Bugs: Password Manager
+# Credential Management Bugs
 A dashboard to get an overview about the bugs related to credential managements owned components.
 
 ## Resources
